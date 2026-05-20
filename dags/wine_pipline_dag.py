@@ -7,10 +7,17 @@ from airflow.operators.python import PythonOperator
 # Базовая директория для работы с файлами
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def load_data() -> str:
+def load_data():
     """Загрузка данных о вине."""
-    print('Представим, что тут загрузились данные о вине...')
-    df = pd.DataFrame()
+    import pandas as pd
+    import dvc.api
+
+    with dvc.api.open(
+        path='data/winequality-red.csv',
+        repo='https://github.com',
+        rev='develop'
+    ) as fd:
+        return pd.read_csv(fd)
     
     # Сохраняем временный датасет
     os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
