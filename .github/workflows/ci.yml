@@ -1,0 +1,37 @@
+stages:
+  -lint
+  - dvc_fetch
+  -test
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+
+# Проверка линтером
+lint-job:
+  stage: lint
+  image: python:3.10-slim
+  before_script:
+    - pip install flake8
+  script:
+    - flake8 .
+  allow_failure: true
+
+# Проверка доступности данных в DVC
+dvc-pull-job:
+  stage: dvc_fetch
+  image: python:3.10-slim
+  before_script:
+    - pip install dvc[s3]
+  script:
+    - dvc pull
+
+# Запуск тестов (тесты запускаются параллельно и независимо)
+api-tests:
+  stage: test
+  image: python:3.10-slim
+  before_script:
+    - pip install pytest httpx #httpx нужен для FastAPI TestClient
+    - pip install -r requirements.txt
+  script:
+    - pytest
