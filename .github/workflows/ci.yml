@@ -1,6 +1,6 @@
-name: CI Pipeline
+name: Project CI Pipeline
 
-# Запуск только при создании или обновлении Pull Request в ветку main
+# Запуск при каждом Pull Request в ветку main
 on:
   pull_request:
     branches:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   # Проверка линтером
-  lint:
+  linter-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -19,18 +19,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Lint Tools
-        run: |
-          pip install flake8
+      - name: Install flake8
+        run: pip install flake8
 
       - name: Run Linter
-        # continue-on-error: true заменяет allow_failure из GitLab
-        continue-on-error: true
-        run: |
-          flake8 .
+        run: flake8 .
 
   # Проверка доступности данных и моделей в DVC
-  dvc_fetch:
+  dvc-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -42,21 +38,22 @@ jobs:
           python-version: '3.10'
 
       - name: Install DVC
-        # Замените [s3] на ваше хранилище (например, [gdrive], [oss] и т.д.), если нужно
-        run: |
-          pip install dvc[s3]
+        # Ставим dvc с поддержкой S3 (для вашего MinIO бакета tarasovwine)
+        run: pip install dvc[s3]
 
-      - name: DVC Pull
-        # Передаем секреты из настроек GitHub в переменные окружения
+      - name: Verify DVC Availability (dvc pull)
+        # Настройка переменных окружения из секретов GitHub для доступа к хранилищу
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          dvc pull
+          # AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        run: dvc pull
 
-  # Тестирование (запускается параллельно с остальными, тесты независимы)
+  # Запуск созданных тестов для API
   api-tests:
     runs-on: ubuntu-latest
+    # Начнется только ПОСЛЕ того, как dvc-check подтвердит доступность моделей
+    needs: dvc-check
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -66,11 +63,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
-          pip install pytest httpx
+          pip install pytest httpx dvc[s3] pandas joblib scikit-learn fastapi uvicorn mlflow
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run API Tests
+      - name: Pull Model for Tests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: dvc pull
+
+      - name: Run Pytest
+        # PYTHONPATH, чтобы pytest видел папку src/
         run: |
-          pytest
+          export PYTHONPATH=$PYTHONPATH:.
+          pytest tests/
