@@ -1,37 +1,76 @@
-stages:
-  -lint
-  - dvc_fetch
-  -test
+name: CI Pipeline
 
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+# Запуск только при создании или обновлении Pull Request в ветку main
+on:
+  pull_request:
+    branches:
+      - main
 
-# Проверка линтером
-lint-job:
-  stage: lint
-  image: python:3.10-slim
-  before_script:
-    - pip install flake8
-  script:
-    - flake8 .
-  allow_failure: true
+jobs:
+  # Проверка линтером
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-# Проверка доступности данных в DVC
-dvc-pull-job:
-  stage: dvc_fetch
-  image: python:3.10-slim
-  before_script:
-    - pip install dvc[s3]
-  script:
-    - dvc pull
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-# Запуск тестов (тесты запускаются параллельно и независимо)
-api-tests:
-  stage: test
-  image: python:3.10-slim
-  before_script:
-    - pip install pytest httpx #httpx нужен для FastAPI TestClient
-    - pip install -r requirements.txt
-  script:
-    - pytest
+      - name: Install Lint Tools
+        run: |
+          pip install flake8
+
+      - name: Run Linter
+        # continue-on-error: true заменяет allow_failure из GitLab
+        continue-on-error: true
+        run: |
+          flake8 .
+
+  # Проверка доступности данных и моделей в DVC
+  dvc_fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install DVC
+        # Замените [s3] на ваше хранилище (например, [gdrive], [oss] и т.д.), если нужно
+        run: |
+          pip install dvc[s3]
+
+      - name: DVC Pull
+        # Передаем секреты из настроек GitHub в переменные окружения
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          dvc pull
+
+  # Тестирование (запускается параллельно с остальными, тесты независимы)
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest httpx
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run API Tests
+        run: |
+          pytest
