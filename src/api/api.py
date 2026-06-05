@@ -159,22 +159,28 @@ async def model_info() -> dict:
         raise HTTPException(status_code=503, detail="Модель не загружена в память")
 
     try:
-        # Извлекаем оценщик из scikit-learn пайплайна
-        regressor = pipeline.name_steps.get("regressor")
+        if hasattr(pipeline, "named_steps"):
+            regressor = pipeline.named_steps.get("regressor")
+            pipeline_steps = list(pipeline.named_steps.keys())
+        else:
+            # Если в файле чистая модель, а не pipeline
+            regressor = pipeline
+            pipeline_steps = ["no_pipeline_direct_model"]
+
         regressor_params = regressor.get_params() if regressor else {}
 
-        # Очищаем параметры от тяжелых и лишних объектов
-        serializable_params = {k: v for k, v in regressor_params.items() if isinstance(v, (int, float, str, bool, list, type(None)))}
+        # Все параметры делаем строками, чтобы избежать падений на валидации типов в JSON
+        stringified_params = {str(k): str(v) for k, v in regressor_params.items()}
 
         return {
             "model_name": MODEL_NAME,
             "model_version": MODEL_VERSION,
             "pipeline_steps": list(pipeline.named_steps.keys()),
             "regressor_type": type(regressor).__name__ if regressor else "Unknown",
-            "hyperparameters": serializable_params
+            "hyperparameters": stringified_params
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка при сборке метаданных: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка: {str(e)}")
 
 # Точка входа (Управление режимами работы)
 if __name__ == "__main__":
