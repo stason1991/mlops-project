@@ -13,6 +13,10 @@ from sklearn.exceptions import InconsistentVersionWarning
 # Настройки и пути
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "wine_quality_model.pkl")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+print(f"[DEBUG] корень проекта определен как: {PROJECT_ROOT}")
 
 MLFLOW_TRACKING_URI = os.getenv(
     "MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"
@@ -41,11 +45,14 @@ def export_mlflow_to_dvc():
         print("Выполнение dvc add...")
         subprocess.run(
             [sys.executable, "-m", "dvc", "add", MODEL_PATH],
+            cwd=PROJECT_ROOT,
             check=True
         )
         print("Выполнение dvc push...")
         subprocess.run(
-            [sys.executable, "-m", "dvc", "push"], check=True
+            [sys.executable, "-m", "dvc", "push"],
+            cwd=PROJECT_ROOT,
+            check=True
         )
 
         print("[MLflow -> DVC] Успешно! Файл затрекан в DVC.")

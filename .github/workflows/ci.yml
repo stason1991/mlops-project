@@ -49,10 +49,9 @@ jobs:
           # AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
         run: dvc pull
 
-  # Запуск созданных тестов для API
+  # Запуск тестов для API
   api-tests:
     runs-on: ubuntu-latest
-    # Начнется только ПОСЛЕ того, как dvc-check подтвердит доступность моделей
     needs: dvc-check
     steps:
       - name: Checkout code
