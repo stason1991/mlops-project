@@ -8,3 +8,6 @@
     endpointurl = http://85.239.47.84:9000
     access_key_id = Tarasov
     secret_access_key = VeryLongRandomSecret123
+['remote "model_remote"']
+    url = s3://tarasovwine/models
+    endpointurl = http://85.239.47.84:9000

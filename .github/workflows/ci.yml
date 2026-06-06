@@ -46,13 +46,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          # Скачиваем датасет 
-          dvc pull data/winequality-red.csv.dvc
-          # Регистрируем для CI изолированный репозиторий моделей
-          dvc remote add ci_model_remote s3://tarasovwine/models --force
-          # Вытягиваем модель из её целевой папки
-          dvc pull -r ci_model_remote models/wine_quality_model.pkl.dvc
+        run: dvc pull
 
   # Запуск тестов для API
   api-tests:
@@ -76,10 +70,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          dvc pull data/winequality-red.csv.dvc
-          dvc remote add ci_model_remote s3://tarasovwine/models --force
-          dvc pull -r ci_model_remote models/wine_quality_model.pkl.dvc
+        run: dvc pull
 
       - name: Run Pytest
         # PYTHONPATH, чтобы pytest видел папку src/
