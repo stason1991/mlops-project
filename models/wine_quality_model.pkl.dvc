@@ -3,4 +3,3 @@ outs:
   size: 3261442
   hash: md5
   path: wine_quality_model.pkl
-  remote: model_remote
