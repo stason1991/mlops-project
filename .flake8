@@ -1,0 +1,6 @@
+[flake8]
+exclude =
+    .git,
+    venv,
+    .venv,
+    __init__.py
