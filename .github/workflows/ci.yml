@@ -1,0 +1,79 @@
+name: Project CI Pipeline
+
+# Запуск при каждом Pull Request в ветку main
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # Проверка линтером
+  linter-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Run Linter
+        run: flake8 .
+
+  # Проверка доступности данных и моделей в DVC
+  dvc-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install DVC
+        # Ставим dvc с поддержкой S3 (для вашего MinIO бакета tarasovwine)
+        run: pip install dvc[s3]
+
+      - name: Verify DVC Availability (dvc pull)
+        # Настройка переменных окружения из секретов GitHub для доступа к хранилищу
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: dvc pull
+
+  # Запуск тестов для API
+  api-tests:
+    runs-on: ubuntu-latest
+    needs: dvc-check
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install pytest httpx dvc[s3] pandas joblib scikit-learn fastapi uvicorn mlflow
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Pull Model for Tests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: dvc pull
+
+      - name: Run Pytest
+        # PYTHONPATH, чтобы pytest видел папку src/
+        run: |
+          export PYTHONPATH=$PYTHONPATH:.
+          pytest tests/
