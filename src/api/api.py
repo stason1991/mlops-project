@@ -31,7 +31,6 @@ pipeline = None
 
 def export_mlflow_to_dvc():
     """Выгрузка нового пайплайна из MLflow в DVC."""
-    import subprocess
     print("\n[MLflow -> DVC] Старт выгрузки нового пайплайна...")
     try:
         mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -68,11 +67,10 @@ def export_mlflow_to_dvc():
 async def lifespan(app: FastAPI):
     """Жизненный цикл API для автоматической загрузки модели."""
     global pipeline
-    absolute_model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
-    
-    # ИСПРАВЛЕНО (Пункт 6): Если файла нет, пробуем dvc pull
-    if not os.path.exists(absolute_model_path):
-        print(f"[API] Файл {MODEL_PATH} не найден. Скачиваем через dvc pull...")
+    abs_model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
+
+    if not os.path.exists(abs_model_path):
+        print(f"[API] Файл {MODEL_PATH} не найден. Делаем dvc pull...")
         try:
             subprocess.run(
                 [sys.executable, "-m", "dvc", "pull", MODEL_PATH],
@@ -83,22 +81,21 @@ async def lifespan(app: FastAPI):
         except Exception as dvc_err:
             print(f"[API Ошибка] Не удалось выполнить dvc pull: {dvc_err}")
 
-    # Пробуем загрузить модель в память
-    print(f"\n[API] Загрузка модели из локального файла: {absolute_model_path}...")
+    print(f"\n[API] Загрузка модели из файла: {abs_model_path}...")
     try:
-        if os.path.exists(absolute_model_path):
+        if os.path.exists(abs_model_path):
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore", category=InconsistentVersionWarning
                 )
-                pipeline = joblib.load(absolute_model_path)
+                pipeline = joblib.load(abs_model_path)
             print("[API] Пайплайн успешно загружен в память.\n")
         else:
             raise FileNotFoundError(
-                f"Файл модели отсутствует по пути: {absolute_model_path}"
+                f"Файл модели всё ещё отсутствует по пути: {abs_model_path}"
             )
     except Exception as e:
-        print(f"[API КРИТИЧЕСКАЯ ОШИБКА]: Приложение запущено без модели! Ошибка: {e}")
+        print(f"[API КРИТИЧЕСКАЯ ОШИБКА]: Сервис без модели! Ошибка: {e}")
         pipeline = None
 
     yield
@@ -151,7 +148,10 @@ class WineFeatures(BaseModel):
 async def predict(features: WineFeatures, request: Request) -> dict:
     """Эндпоинт инференса для предсказания качества вина."""
     if pipeline is None:
-        raise HTTPException(status_code=503, detail="Пайплайн не загружен.")
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис недоступен: пайплайн не загружен."
+        )
     try:
         raw_json = await request.json()
 
@@ -167,9 +167,9 @@ async def predict(features: WineFeatures, request: Request) -> dict:
         prediction = pipeline.predict(input_data)
 
         if hasattr(prediction, "ndim") and prediction.ndim > 0:
-            predicted_value = prediction[0]
+            predicted_value = prediction
         elif hasattr(prediction, "__len__") and len(prediction) > 0:
-            predicted_value = prediction[0]
+            predicted_value = prediction
         else:
             predicted_value = prediction
 
@@ -180,17 +180,23 @@ async def predict(features: WineFeatures, request: Request) -> dict:
 
 @app.get("/healthcheck")
 async def healthcheck() -> dict:
-    """Проверка доступности сервиса."""
+    """Проверка доступности сервиса согласно ТЗ."""
     if pipeline is None:
-        raise HTTPException(status_code=503, detail="Модель недоступна")
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис недоступен: модель не найдена"
+        )
     return {"status": "ok"}
 
 
 @app.get("/model-info")
 async def model_info() -> dict:
-    """Получение метаданных о текущей модели."""
+    """Получение метаданных о текущей модели согласно ТЗ."""
     if pipeline is None:
-        raise HTTPException(status_code=503, detail="Модель не загружена")
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис недоступен: модель не загружена"
+        )
     try:
         if hasattr(pipeline, "named_steps"):
             regressor = pipeline.named_steps.get("regressor")
