@@ -1,6 +1,7 @@
 import os
 import sys
 import warnings
+import subprocess
 from contextlib import asynccontextmanager
 import joblib
 import pandas as pd
@@ -38,9 +39,11 @@ def export_mlflow_to_dvc():
         print(f"Загрузка {model_uri} из MLflow...")
         loaded_pipeline = mlflow.sklearn.load_model(model_uri)
 
-        os.makedirs(MODEL_DIR, exist_ok=True)
-        joblib.dump(loaded_pipeline, MODEL_PATH)
-        print(f"Бинарник успешно сохранен на диске: {MODEL_PATH}")
+        os.makedirs(os.path.join(PROJECT_ROOT, MODEL_DIR), exist_ok=True)
+        absolute_model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
+
+        joblib.dump(loaded_pipeline, absolute_model_path)
+        print(f"Бинарник успешно сохранен на диске: {absolute_model_path}")
 
         print("Выполнение dvc add...")
         subprocess.run(
@@ -65,22 +68,39 @@ def export_mlflow_to_dvc():
 async def lifespan(app: FastAPI):
     """Жизненный цикл API для автоматической загрузки модели."""
     global pipeline
-    print(f"\n[API] Загрузка модели из локального файла: {MODEL_PATH}...")
+    absolute_model_path = os.path.join(PROJECT_ROOT, MODEL_PATH)
+    
+    # ИСПРАВЛЕНО (Пункт 6): Если файла нет, пробуем dvc pull
+    if not os.path.exists(absolute_model_path):
+        print(f"[API] Файл {MODEL_PATH} не найден. Скачиваем через dvc pull...")
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "dvc", "pull", MODEL_PATH],
+                cwd=PROJECT_ROOT,
+                check=True
+            )
+            print("[API] dvc pull успешно выполнен.")
+        except Exception as dvc_err:
+            print(f"[API Ошибка] Не удалось выполнить dvc pull: {dvc_err}")
+
+    # Пробуем загрузить модель в память
+    print(f"\n[API] Загрузка модели из локального файла: {absolute_model_path}...")
     try:
-        if os.path.exists(MODEL_PATH):
+        if os.path.exists(absolute_model_path):
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore", category=InconsistentVersionWarning
                 )
-                pipeline = joblib.load(MODEL_PATH)
-            print("[API] Пайплайн успешно загружен в оперативную память.\n")
+                pipeline = joblib.load(absolute_model_path)
+            print("[API] Пайплайн успешно загружен в память.\n")
         else:
             raise FileNotFoundError(
-                f"Критическая ошибка: файл не найден по пути: {MODEL_PATH}"
+                f"Файл модели отсутствует по пути: {absolute_model_path}"
             )
     except Exception as e:
-        print(f"[API Критическая ошибка при старте]: {e}")
-        sys.exit(1)
+        print(f"[API КРИТИЧЕСКАЯ ОШИБКА]: Приложение запущено без модели! Ошибка: {e}")
+        pipeline = None
+
     yield
 
 
@@ -160,7 +180,7 @@ async def predict(features: WineFeatures, request: Request) -> dict:
 
 @app.get("/healthcheck")
 async def healthcheck() -> dict:
-    """Проверка доступности сервиса согласно ТЗ."""
+    """Проверка доступности сервиса."""
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Модель недоступна")
     return {"status": "ok"}
@@ -168,7 +188,7 @@ async def healthcheck() -> dict:
 
 @app.get("/model-info")
 async def model_info() -> dict:
-    """Получение метаданных о текущей модели согласно ТЗ."""
+    """Получение метаданных о текущей модели."""
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
     try:
